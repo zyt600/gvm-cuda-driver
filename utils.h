@@ -133,6 +133,16 @@ static int update_event_count(int uvmfd, CUuuid uuid, UVM_EVENT_TYPE type, UVM_U
 	return 0;
 }
 
+#define UVM_WAIT_EVICTION_NOTICE 82
+typedef struct
+{
+	CUuuid   uuid;
+	uint64_t target_memory;
+	int      rmStatus;
+} UVM_WAIT_EVICTION_NOTICE_PARAMS;
+
+UVM_WAIT_EVICTION_NOTICE_PARAMS wait_eviction_notice(void);
+
 static size_t gettime_ms(void) {
 	struct timespec ts;
 	clock_gettime(CLOCK_REALTIME, &ts);

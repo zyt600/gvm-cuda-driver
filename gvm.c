@@ -45,6 +45,8 @@ static CUresult cuInterceptEnd(void);
 
 static CUresult cuInterceptStart(void) { return CUDA_SUCCESS; }
 
+static bool try_init_uvmfd(void);
+
 CUresult cuMemAlloc_v2_WRAPPER(void **devPtr, size_t size) {
 	CUresult ret = CUDA_SUCCESS;
 
@@ -54,19 +56,7 @@ CUresult cuMemAlloc_v2_WRAPPER(void **devPtr, size_t size) {
 		cuMemGetInfo_v2_IMPL(&_cuda_mem_free, &_cuda_mem_total);
 		g_cuda_mem_total = _cuda_mem_total;
 	}
-	if (g_uvmfd < 0) {
-		CUdevice device;
-		CUuuid uuid;
-		ret = cuCtxGetDevice_IMPL(&device);
-		if (ret != CUDA_SUCCESS)
-			fprintf(stderr, "cuCtxGetDevice: error code %d\n", ret);
-		ret = cuDeviceGetUuid_IMPL(&uuid, device);
-		if (ret != CUDA_SUCCESS)
-			fprintf(stderr, "cuDeviceGetUuid: error code %d\n", ret);
-
-		g_uvmfd = find_initialized_uvm(uuid);
-		printf("Find uvmfd at %d\n", g_uvmfd);
-	}
+	try_init_uvmfd();
 
 	if (g_cuda_mem_allocated + size > g_cuda_mem_total) {
 		fprintf(stderr, "[INTERCEPTOR] cuMemAlloc: out of memory.\n");
@@ -199,6 +189,44 @@ CUresult cuGetProcAddress_v2_WRAPPER(const char *symbol, void **pfn, int cudaVer
 }
 
 static CUresult cuInterceptEnd(void) { return CUDA_SUCCESS; }
+
+static bool try_init_uvmfd(void) {
+	if (g_uvmfd >= 0)
+		return true;
+
+	CUdevice device;
+	CUuuid uuid;
+	CUresult ret;
+
+	ret = cuCtxGetDevice_IMPL(&device);
+	if (ret != CUDA_SUCCESS){
+		fprintf(stderr, "cuCtxGetDevice: error code %d\n", ret);
+		return false;
+	}
+	ret = cuDeviceGetUuid_IMPL(&uuid, device);
+	if (ret != CUDA_SUCCESS){
+		fprintf(stderr, "cuDeviceGetUuid: error code %d\n", ret);
+		return false;
+	}
+	g_uvmfd = find_initialized_uvm(uuid);
+	printf("Find uvmfd at %d\n", g_uvmfd);
+	return true;
+}
+
+UVM_WAIT_EVICTION_NOTICE_PARAMS wait_eviction_notice(void) {
+	UVM_WAIT_EVICTION_NOTICE_PARAMS params;
+
+	while (!try_init_uvmfd()) {
+		printf("Waiting for uvmfd...\n");
+		sleep(1);
+	}
+
+	do {
+		memset(&params, 0, sizeof(params));
+	} while (ioctl(g_uvmfd, UVM_WAIT_EVICTION_NOTICE, &params) != 0 && errno == EINTR);
+
+	return params;
+}
 
 static pthread_t event_thread;
 static volatile bool running;
