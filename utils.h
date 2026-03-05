@@ -138,6 +138,7 @@ typedef struct
 {
 	CUuuid   uuid;
 	uint64_t target_memory;
+	uint64_t current_memory;
 	int      rmStatus;
 } UVM_WAIT_EVICTION_NOTICE_PARAMS;
 
