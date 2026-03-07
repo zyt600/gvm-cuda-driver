@@ -1,7 +1,6 @@
 #define _GNU_SOURCE
 #include <stdbool.h>
 #include <dlfcn.h>
-#include <errno.h>
 #include <fcntl.h>
 #include <pthread.h>
 #include <stdlib.h>
@@ -9,7 +8,6 @@
 #include <sys/time.h>
 #include <sys/wait.h>
 #include <unistd.h>
-#include <math.h>
 #include <sys/socket.h>
 #include <netdb.h>
 #include <sys/types.h>
@@ -32,8 +30,6 @@ static int64_t g_cuda_mem_total = 0UL;
 
 static const size_t g_rb_size = 1048576;
 
-static int g_uvmfd = -1;
-
 static struct ringbuffer g_event_rb;
 
 static _Atomic size_t submitted;
@@ -44,8 +40,6 @@ static CUresult cuInterceptStart(void);
 static CUresult cuInterceptEnd(void);
 
 static CUresult cuInterceptStart(void) { return CUDA_SUCCESS; }
-
-static bool try_init_uvmfd(void);
 
 CUresult cuMemAlloc_v2_WRAPPER(void **devPtr, size_t size) {
 	CUresult ret = CUDA_SUCCESS;
@@ -189,44 +183,6 @@ CUresult cuGetProcAddress_v2_WRAPPER(const char *symbol, void **pfn, int cudaVer
 }
 
 static CUresult cuInterceptEnd(void) { return CUDA_SUCCESS; }
-
-static bool try_init_uvmfd(void) {
-	if (g_uvmfd >= 0)
-		return true;
-
-	CUdevice device;
-	CUuuid uuid;
-	CUresult ret;
-
-	ret = cuCtxGetDevice_IMPL(&device);
-	if (ret != CUDA_SUCCESS){
-		fprintf(stderr, "cuCtxGetDevice: error code %d\n", ret);
-		return false;
-	}
-	ret = cuDeviceGetUuid_IMPL(&uuid, device);
-	if (ret != CUDA_SUCCESS){
-		fprintf(stderr, "cuDeviceGetUuid: error code %d\n", ret);
-		return false;
-	}
-	g_uvmfd = find_initialized_uvm(uuid);
-	printf("Find uvmfd at %d\n", g_uvmfd);
-	return true;
-}
-
-UVM_WAIT_EVICTION_NOTICE_PARAMS wait_eviction_notice(void) {
-	UVM_WAIT_EVICTION_NOTICE_PARAMS params;
-
-	while (!try_init_uvmfd()) {
-		printf("Waiting for uvmfd...\n");
-		sleep(1);
-	}
-
-	do {
-		memset(&params, 0, sizeof(params));
-	} while (ioctl(g_uvmfd, UVM_WAIT_EVICTION_NOTICE, &params) != 0 && errno == EINTR);
-
-	return params;
-}
 
 static pthread_t event_thread;
 static volatile bool running;

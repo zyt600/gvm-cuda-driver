@@ -29,6 +29,7 @@ all: build
 build:
 	mkdir -p $(BUILD)
 	nvcc -g -arch sm_80 -c gvm.c -o $(BUILD)/gvm.o -Xcompiler "-Wno-implicit-function-declaration -fPIC"
+	nvcc -g -arch sm_80 -c gvm_notify.c -o $(BUILD)/gvm_notify.o -Xcompiler "-Wno-implicit-function-declaration -fPIC"
 	python3 tools/mapgen.py -obj $(BUILD)/gvm.o -map $(BUILD)/mapping.json
 	python3 tools/symredef.py -in $(BUILD)/gvm.o -map $(BUILD)/mapping.json -t wrapper -out $(BUILD)/gvm.o.renamed
 	python3 tools/symredef.py -in $(CUDA_RESOLVED) -map $(BUILD)/mapping.json -t cuda -out $(BUILD)/$(CUDAFILE).renamed
